@@ -16,7 +16,7 @@ CATS = {  # key: (名前, アイコン)
 D = [
  ("atk","攻撃力","body","pow","generic.attack_damage","add",1,"",[1,2,4,5,5.5,6,7,7.5,8,8.5],"rotten_flesh*3",
   [(2,5,"iron_sword","iron_block"),(6,9,"diamond_sword","diamond_block"),(10,10,"netherite_sword","netherite_block")]),
- ("reach","リーチ","body","pow","player.entity_interaction_range","add",1,"",[0.3,0.5,0.7,1.0,1.3],"stick*5",
+ ("reach","リーチ","body","pow","player.entity_interaction_range|player.block_interaction_range","add",1,"",[0.3,0.5,0.7,1.0,1.3],"stick*5",
   [(2,3,"blaze_rod","breeze_rod"),(4,4,"fishing_rod","phantom_membrane"),(5,5,"trident","trident")]),
  ("kb","ノックバック","body","pow","generic.attack_knockback","add",1,"",[0.5,1.0,1.5],"shroomlight*2+glowstone*4",
   [(2,2,"diamond_block","netherite_ingot"),(3,3,"netherite_block","#minecraft:music_discs")]),
@@ -33,8 +33,8 @@ D = [
  ("kbres","ノックバック耐性","body","grd","generic.knockback_resistance","add",1,"",[0.1,0.3,0.7],"shield*4",
   [(2,2,"trial_key","iron_ingot"),(3,3,"ominous_trial_key","ancient_debris")]),
 
- ("speed","移動速度","body","mob","generic.movement_speed","mul",0.01,"%",[0.3,0.6,0.9,1.3,2,2.3,2.6,2.9,3,5],"sugar_cane*3",
-  [(2,5,"twisting_vines","ice"),(6,8,"blue_ice","diamond_boots"),(9,9,"crying_obsidian","raw_gold"),(10,10,"netherite_ingot","firework_rocket")]),
+ ("speed","移動速度","body","mob","generic.movement_speed","mul",0.01,"%",[1,2,3,5,7,9,11,13,15,20],"sugar_cane*3",
+  [(2,5,"twisting_vines","packed_ice"),(6,8,"blue_ice","diamond_boots"),(9,9,"crying_obsidian","raw_gold"),(10,10,"netherite_ingot","firework_rocket")]),
  ("jump","ジャンプ力","body","mob","generic.jump_strength","add",1,"m",[0.5,1,1.5,2,2.5],"ender_pearl",
   [(2,4,"rabbit_foot","ender_eye"),(5,5,"elytra","wind_charge")]),
  ("fall","落下耐性","body","mob","generic.safe_fall_distance","add",1,"m",[1,2,3,4,5,6,7,7.5,8,10],"carrot_on_a_stick*2",
@@ -79,7 +79,7 @@ NAMES = {
  "netherite_chestplate":"ネザライトのチェストプレート","spectral_arrow":"光の矢","cake":"ケーキ","diamond":"ダイヤモンド",
  "emerald":"エメラルド","enchanted_golden_apple":"エンチャントされた金のリンゴ","netherite_scrap":"ネザライトの欠片",
  "trial_key":"試練の鍵","ominous_trial_key":"不吉な試練の鍵","iron_ingot":"鉄インゴット","ancient_debris":"古代の残骸",
- "sugar_cane":"サトウキビ","twisting_vines":"ねじれたツタ","ice":"氷","blue_ice":"青氷","diamond_boots":"ダイヤモンドのブーツ",
+ "sugar_cane":"サトウキビ","twisting_vines":"ねじれたツタ","ice":"氷","packed_ice":"氷塊","blue_ice":"青氷","diamond_boots":"ダイヤモンドのブーツ",
  "crying_obsidian":"泣く黒曜石","raw_gold":"金の原石","firework_rocket":"ロケット花火","ender_pearl":"エンダーパール",
  "rabbit_foot":"ウサギの足","ender_eye":"エンダーアイ","elytra":"エリトラ","wind_charge":"ウィンドチャージ",
  "carrot_on_a_stick":"ニンジン付きの棒","oak_boat":"オークのボート","minecart":"トロッコ","water_bucket":"水入りバケツ",
@@ -163,10 +163,11 @@ def result(s, lv):
     }}
 
 
-def adv(path, parent, icon, title, desc, frame="task", toast=False, trig="minecraft:impossible", bg=None):
+def adv(path, parent, icon, title, desc, frame="task", toast=False, trig="minecraft:impossible", bg=None, hidden=False):
     disp = {"icon": {"id": "minecraft:" + icon}, "title": title, "description": desc,
             "frame": frame, "show_toast": toast, "announce_to_chat": toast}
     if bg: disp["background"] = bg
+    if hidden: disp["hidden"] = True
     d = {"display": disp, "criteria": {"done": {"trigger": trig}}}
     if parent: d["parent"] = f"{NS}:{parent}"
     jd(f"data/{NS}/advancement/{path}.json", d)
@@ -207,7 +208,8 @@ for s in D:
         top = lv == n
         adv(f"{folder}/{sid}_{lv}", parent, "bedrock", f"{name} Lv.{lv}" + (" (MAX)" if top else ""),
             eff(s, lv) + "\n" + recipe_text(s, lv), frame="challenge" if top else "task", toast=top)
-adv("sp/body", "root", "netherite_chestplate", "身体強化の極み", "身体強化をすべて最大まで習得", "challenge", True)
-adv("sp/magic", "root", "enchanted_book", "装備強化の極み", "装備強化(魔法)をすべて最大まで付与", "challenge", True)
-adv("sp/all", "root", "nether_star", "訓練の果てに", "すべての強化を全達成", "challenge", True)
+# 特別進捗: 条件を満たすまで進捗画面に出ない(hidden)。all は body の先に繋がる
+adv("sp/body", "root", "netherite_chestplate", "身体強化の極み", "身体強化をすべて最大まで習得", "challenge", True, hidden=True)
+adv("sp/magic", "root", "enchanted_book", "装備強化の極み", "装備強化(魔法)をすべて最大まで付与", "challenge", True, hidden=True)
+adv("sp/all", "sp/body", "nether_star", "訓練の果てに", "すべての強化を全達成", "challenge", True, hidden=True)
 print("done:", sum(len(s[8]) for s in D), "levels")

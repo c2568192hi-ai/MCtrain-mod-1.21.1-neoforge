@@ -1,6 +1,12 @@
 package dev.trainmod;
 
 import com.google.gson.*;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.arguments.StringArgumentType;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
+import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.particles.ParticleTypes;
@@ -28,6 +34,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.common.util.TriState;
 import net.neoforged.neoforge.event.AnvilUpdateEvent;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.entity.player.AnvilRepairEvent;
@@ -115,18 +122,20 @@ public class TrainMod {
     static void apply(ServerPlayer p) {
         for (Skill s : S.values()) {
             if (s.attr() == null) continue;
-            var holder = BuiltInRegistries.ATTRIBUTE.getHolder(ResourceLocation.withDefaultNamespace(s.attr()));
-            if (holder.isEmpty()) continue;
-            AttributeInstance a = p.getAttribute(holder.get());
-            if (a == null) continue;
             int l = lv(p, s.id());
             ResourceLocation id = rl(s.id());
-            if (l <= 0) { if (a.hasModifier(id)) a.removeModifier(id); continue; }
-            double v = amount(s, l);
-            AttributeModifier cur = a.getModifier(id);
-            if (cur != null && Math.abs(cur.amount() - v) < 1e-9) continue; // すでに正しい
-            a.addOrReplacePermanentModifier(new AttributeModifier(id, v,
-                    s.mul() ? AttributeModifier.Operation.ADD_MULTIPLIED_BASE : AttributeModifier.Operation.ADD_VALUE));
+            double v = l > 0 ? amount(s, l) : 0;
+            for (String an : s.attr().split("\\|")) { // "a|b" = 複数の属性に同じ値を付ける
+                var holder = BuiltInRegistries.ATTRIBUTE.getHolder(ResourceLocation.withDefaultNamespace(an));
+                if (holder.isEmpty()) continue;
+                AttributeInstance a = p.getAttribute(holder.get());
+                if (a == null) continue;
+                if (l <= 0) { if (a.hasModifier(id)) a.removeModifier(id); continue; }
+                AttributeModifier cur = a.getModifier(id);
+                if (cur != null && Math.abs(cur.amount() - v) < 1e-9) continue; // すでに正しい
+                a.addOrReplacePermanentModifier(new AttributeModifier(id, v,
+                        s.mul() ? AttributeModifier.Operation.ADD_MULTIPLIED_BASE : AttributeModifier.Operation.ADD_VALUE));
+            }
         }
     }
 
@@ -358,6 +367,47 @@ public class TrainMod {
             float cap = (float) Math.min(40, S.get("absorb").val(a));
             if (p.getAbsorptionAmount() < cap) p.setAbsorptionAmount(Math.min(cap, p.getAbsorptionAmount() + 1));
         }
+    }
+
+    // ---------- /trainmod (OP専用) ----------
+    @SubscribeEvent
+    static void onCommands(RegisterCommandsEvent e) {
+        e.getDispatcher().register(Commands.literal("trainmod").requires(src -> src.hasPermission(2))
+                .then(Commands.literal("set").then(Commands.argument("targets", EntityArgument.players())
+                        .then(Commands.argument("skill", StringArgumentType.word())
+                                .suggests((c, b) -> SharedSuggestionProvider.suggest(S.keySet(), b))
+                                .then(Commands.argument("level", IntegerArgumentType.integer(0, 10))
+                                        .executes(c -> cmdSet(c.getSource(), EntityArgument.getPlayers(c, "targets"),
+                                                StringArgumentType.getString(c, "skill"), IntegerArgumentType.getInteger(c, "level")))))))
+                .then(Commands.literal("max").then(Commands.argument("targets", EntityArgument.players())
+                        .executes(c -> cmdMax(c.getSource(), EntityArgument.getPlayers(c, "targets"))))));
+    }
+
+    static int cmdSet(CommandSourceStack src, Collection<ServerPlayer> ps, String id, int l) {
+        Skill s = S.get(id);
+        if (s == null) { src.sendFailure(Component.literal("不明なスキル: " + id + " (候補: " + String.join(", ", S.keySet()) + ")")); return 0; }
+        if (l > s.max()) { src.sendFailure(Component.literal(s.name() + " の最大Lvは " + s.max() + " です")); return 0; }
+        for (ServerPlayer p : ps) { setLevel(p, s, l); checkSpecials(p); }
+        src.sendSuccess(() -> Component.literal(s.name() + " を Lv." + l + " にしました (" + ps.size() + "人)"), true);
+        return ps.size();
+    }
+
+    static int cmdMax(CommandSourceStack src, Collection<ServerPlayer> ps) {
+        for (ServerPlayer p : ps) { for (Skill s : S.values()) setLevel(p, s, s.max()); checkSpecials(p); }
+        src.sendSuccess(() -> Component.literal("すべての強化を最大にしました (" + ps.size() + "人)"), true);
+        return ps.size();
+    }
+
+    /** レベルを直接設定し、進捗もそのLvに合わせて付与/取り消す (魔法は付与済み最大Lvの記録を変更) */
+    static void setLevel(ServerPlayer p, Skill s, int l) {
+        data(p).putInt(s.magic() ? "m_" + s.id() : s.id(), l);
+        String folder = s.magic() ? "magic/" : "body/";
+        for (int i = 1; i <= s.max(); i++) {
+            var h = p.server.getAdvancements().get(rl(folder + s.id() + "_" + i));
+            if (h == null) continue;
+            if (i <= l) p.getAdvancements().award(h, "done"); else p.getAdvancements().revoke(h, "done");
+        }
+        apply(p);
     }
 
     // ---------- ログイン/リスポーン ----------
