@@ -1,0 +1,18 @@
+plugins {
+    id 'java'
+    id 'net.neoforged.moddev' version '2.0.78'
+}
+
+version = '1.0.3'
+group = 'dev.trainmod'
+base { archivesName = 'trainmod' }
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+neoForge {
+    version = '21.1.172'   // 見つからない場合は 21.1.x の新しい版番号に変更
+    runs { server { server() } }
+    mods { trainmod { sourceSet sourceSets.main } }
+}
+
+repositories { mavenCentral() }
